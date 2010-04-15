@@ -88,12 +88,6 @@ idirs: doclink
 !	IF (!EXIST($(OJT)\crypto\hcrypto))
 		$(MKDIR) $(OJT)\crypto\hcrypto
 !	ENDIF
-!	IF (!EXIST($(OJT)\des))
-		$(MKDIR) $(OJT)\des
-!	ENDIF
-!	IF (!EXIST($(OJT)\des\test))
-		$(MKDIR) $(OJT)\des\test
-!	ENDIF
 !	IF (!EXIST($(OJT)\dir))
 		$(MKDIR) $(OJT)\dir
 !	ENDIF
@@ -424,12 +418,15 @@ idirs: doclink
 !	IF (!EXIST($(DESTDIR)\include\afs))
 		$(MKDIR) $(DESTDIR)\include\afs
 !	ENDIF
+<<<<<<< HEAD
 !	IF (!EXIST($(DESTDIR)\include\des))
 		$(MKDIR) $(DESTDIR)\include\des
 !	ENDIF
 !	IF (!EXIST($(DESTDIR)\include\hcrypto))
 		$(MKDIR) $(DESTDIR)\include\hcrypto
 !	ENDIF
+=======
+>>>>>>> f522d51... Remove local crypto
 !	IF (!EXIST($(DESTDIR)\include\rx))
 		$(MKDIR) $(DESTDIR)\include\rx
 !	ENDIF

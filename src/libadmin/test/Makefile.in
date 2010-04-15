@@ -27,7 +27,9 @@ AFSCPLIBS =\
 	$(TOP_LIBDIR)/libafsauthent.a \
 	$(TOP_LIBDIR)/libafsrpc.a \
 	$(TOP_LIBDIR)/libcmd.a \
-	$(TOP_LIBDIR)/libafsutil.a
+	$(TOP_LIBDIR)/libafsutil.a \
+	${TOP_LIBDIR}/libafshcrypto_lwp.a \
+	@LIB_crypt@
 
 AFSCPOBJS =\
 	bos.o \

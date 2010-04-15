@@ -25,7 +25,7 @@ INCLS=bnode.h \
 	${TOP_INCDIR}/afs/ktime.h
 
 # EH 12/18/90 - have to search librx.a twice on Ultrix 4.0
-LIBS=${TOP_LIBDIR}/librx.a \
+LIBS=   ${TOP_LIBDIR}/librx.a \
 	${TOP_LIBDIR}/liblwp.a \
 	${TOP_LIBDIR}/libcmd.a \
 	${TOP_LIBDIR}/libkauth.a \
@@ -34,13 +34,14 @@ LIBS=${TOP_LIBDIR}/librx.a \
 	${TOP_LIBDIR}/libauth.a \
 	${TOP_LIBDIR}/librxstat.a \
 	${TOP_LIBDIR}/librxkad.a \
-	${TOP_LIBDIR}/libdes.a \
 	${TOP_LIBDIR}/libubik.a \
 	${TOP_LIBDIR}/librx.a \
 	${TOP_LIBDIR}/libcom_err.a \
 	${TOP_LIBDIR}/util.a \
 	${TOP_LIBDIR}/libsys.a \
-	${TOP_LIBDIR}/libprocmgmt.a
+	${TOP_LIBDIR}/libprocmgmt.a \
+	${TOP_LIBDIR}/libafshcrypto_lwp.a \
+	@LIB_crypt@
 
 OBJS=bosserver.o bnode.o ezbnodeops.o fsbnodeops.o bosint.ss.o bosint.xdr.o \
 bosoprocs.o cronbnodeops.o
