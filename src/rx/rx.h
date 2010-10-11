@@ -22,6 +22,8 @@
 #ifndef	_RX_
 #define _RX_
 
+#include <opr/queue.h>
+
 #ifndef KDUMP_RX_LOCK
 #ifdef	KERNEL
 #include "rx_kmutex.h"
@@ -64,7 +66,6 @@
 #endif
 #endif /* KERNEL */
 
-
 /* Configurable parameters */
 #define	RX_IDLE_DEAD_TIME	60	/* default idle dead time */
 #define	RX_MAX_SERVICES		20	/* Maximum number of services that may be installed */
@@ -96,7 +97,6 @@ int rx_KeyCreate(rx_destructor_t);
 osi_socket rxi_GetHostUDPSocket(u_int host, u_short port);
 osi_socket rxi_GetUDPSocket(u_short port);
 #endif /* KERNEL */
-
 
 int ntoh_syserr_conv(int error);
 
@@ -471,6 +471,8 @@ struct rx_call {
     struct rx_queue queue_item_header;	/* Call can be on various queues (one-at-a-time) */
     struct rx_queue tq;		/* Transmit packet queue */
     struct rx_queue rq;		/* Receive packet queue */
+    struct opr_queue tq_noack;  /* Transmit packets which haven't been ack'd */
+
     /*
      * The following fields are accessed while the call is unlocked.
      * These fields are used by the caller/server thread to marshall

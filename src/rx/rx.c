@@ -2408,6 +2408,7 @@ rxi_NewCall(struct rx_connection *conn, int channel)
 	    rxi_ClearTransmitQueue(call, 1);
 	    /*queue_Init(&call->tq);*/
 	}
+	opr_queue_Init(&call->tq_noack);
 #endif /* AFS_GLOBAL_RXLOCK_KERNEL */
 	/* Bind the call to its connection structure */
 	call->conn = conn;
@@ -2433,6 +2434,7 @@ rxi_NewCall(struct rx_connection *conn, int channel)
 
 	/* Initialize once-only items */
 	queue_Init(&call->tq);
+	queue_Init(&call->tq_noack);
 	queue_Init(&call->rq);
 	queue_Init(&call->iovq);
 #ifdef RXDEBUG_PACKET
@@ -4113,6 +4115,9 @@ rxi_ReceiveAckPacket(struct rx_call *call, struct rx_packet *np,
 #endif /* AFS_GLOBAL_RXLOCK_KERNEL */
 	{
 	    queue_Remove(tp);
+	    if (opr_queue_IsOnQueue(&tp->noAckEntry))
+		opr_queue_Remove(&tp->noAckEntry);
+
 #ifdef RX_TRACK_PACKETS
 	    tp->flags &= ~RX_PKTFLAG_TQ;
 #endif
@@ -4149,18 +4154,17 @@ rxi_ReceiveAckPacket(struct rx_call *call, struct rx_packet *np,
 	 * be downgraded when the server has discarded a packet it
 	 * soacked previously, or when an ack packet is received
 	 * out of sequence. */
-	if (tp->header.seq < first) {
-	    /* Implicit ack information */
-	    if (!(tp->flags & RX_PKTFLAG_ACKED)) {
-		newAckCount++;
-	    }
-	    tp->flags |= RX_PKTFLAG_ACKED;
-	} else if (tp->header.seq < first + nAcks) {
+	if (tp->header.seq >=first && tp->header.seq < first + nAcks) {
 	    /* Explicit ack information:  set it in the packet appropriately */
 	    if (ap->acks[tp->header.seq - first] == RX_ACK_TYPE_ACK) {
 		if (!(tp->flags & RX_PKTFLAG_ACKED)) {
 		    newAckCount++;
 		    tp->flags |= RX_PKTFLAG_ACKED;
+
+		    if (!(call->flags & RX_CALL_TQ_BUSY)
+			&& opr_queue_IsOnQueue(&tp->noAckEntry)) {
+			opr_queue_Remove(&tp->noAckEntry);
+		    }
 
 		    rxi_ComputeRoundTripTime(tp, ap, call->conn->peer, &now);
 #ifdef ADAPT_WINDOW
@@ -4176,11 +4180,13 @@ rxi_ReceiveAckPacket(struct rx_call *call, struct rx_packet *np,
 	    } else /* RX_ACK_TYPE_NACK */ {
 		tp->flags &= ~RX_PKTFLAG_ACKED;
 		missing = 1;
+		/* XXX - Need to rethread this packet onto the noack queue */
 	    }
 	} else {
 	    if (tp->flags & RX_PKTFLAG_ACKED) {
 		tp->flags &= ~RX_PKTFLAG_ACKED;
 		missing = 1;
+		/* XXX - Need to rethread this packet onto the noack queue */
 	    }
 	}
 
@@ -4712,6 +4718,10 @@ rxi_SetAcksInTransmitQueue(struct rx_call *call)
 
     for (queue_Scan(&call->tq, p, tp, rx_packet)) {
 	p->flags |= RX_PKTFLAG_ACKED;
+
+	if (opr_queue_IsOnQueue(&p->noAckEntry))
+	    opr_queue_Remove(&p->noAckEntry);
+
 	someAcked = 1;
     }
     if (someAcked) {
@@ -4738,6 +4748,8 @@ rxi_SetAcksInTransmitQueue(struct rx_call *call)
 void
 rxi_ClearTransmitQueue(struct rx_call *call, int force)
 {
+    struct opr_queue *cursor, *store;
+
 #ifdef	AFS_GLOBAL_RXLOCK_KERNEL
     struct rx_packet *p, *tp;
 
@@ -4745,6 +4757,10 @@ rxi_ClearTransmitQueue(struct rx_call *call, int force)
 	int someAcked = 0;
 	for (queue_Scan(&call->tq, p, tp, rx_packet)) {
 	    p->flags |= RX_PKTFLAG_ACKED;
+
+	    if (opr_queue_IsOnQueue(&p->noAckEntry))
+		opr_queue_Remove(&p->noAckEntry);
+
 	    someAcked = 1;
 	}
 	if (someAcked) {
@@ -4753,6 +4769,9 @@ rxi_ClearTransmitQueue(struct rx_call *call, int force)
 	}
     } else {
 #endif /* AFS_GLOBAL_RXLOCK_KERNEL */
+	for (opr_queue_ScanSafe(&call->tq_noack, cursor, store)) {
+	    opr_queue_Remove(cursor);
+	}
 #ifdef RXDEBUG_PACKET
         call->tqc -=
 #endif /* RXDEBUG_PACKET */
@@ -5643,9 +5662,11 @@ rxi_Start(struct rxevent *event,
           void *arg0, void *arg1, int istack)
 {
     struct rx_call *call = arg0;
-
+    struct opr_queue *cursor;
     struct rx_packet *p;
-    struct rx_packet *nxp;	/* Next pointer for queue_Scan */
+#ifdef RX_ENABLE_LOCKS
+    struct rx_packet *nxp;
+#endif
     struct clock now, usenow, retryTime;
     int haveEvent;
     int nXmitPackets;
@@ -5660,7 +5681,7 @@ rxi_Start(struct rxevent *event,
 	CALL_RELE(call, RX_CALL_REFCOUNT_RESEND);
         MUTEX_EXIT(&rx_refcnt_mutex);
 	call->resendEvent = NULL;
-	if (queue_IsEmpty(&call->tq)) {
+	if (opr_queue_IsEmpty(&call->tq_noack)) {
 	    /* Nothing to do */
 	    return;
 	}
@@ -5674,8 +5695,8 @@ rxi_Start(struct rxevent *event,
 	return;
     }
 
-    if (queue_IsNotEmpty(&call->tq)) {	/* If we have anything to send */
-
+    if (!opr_queue_IsEmpty(&call->tq_noack)) {
+	/* If we have anything to send */
     	clock_GetTime(&now);
 	usenow = now;
 
@@ -5705,7 +5726,9 @@ rxi_Start(struct rxevent *event,
 #endif /* AFS_GLOBAL_RXLOCK_KERNEL */
 		nXmitPackets = 0;
 		maxXmitPackets = MIN(call->twind, call->cwind);
-		for (queue_Scan(&call->tq, p, nxp, rx_packet)) {
+		for (opr_queue_Scan(&call->tq_noack, cursor)) {
+		    p = opr_queue_Entry(cursor, struct rx_packet, noAckEntry);
+
 		    if (call->flags & RX_CALL_FAST_RECOVER_WAIT) {
 			/* We shouldn't be sending packets if a thread is waiting
 			 * to initiate congestion recovery */
@@ -5730,11 +5753,10 @@ rxi_Start(struct rxevent *event,
 		    }
 #endif
 		    if (p->flags & RX_PKTFLAG_ACKED) {
-			/* Since we may block, don't trust this */
-			usenow.sec = usenow.usec = 0;
-                        if (rx_stats_active)
-                            rx_atomic_inc(&rx_stats.ignoreAckedPacket);
-			continue;	/* Ignore this packet if it has been acknowledged */
+			/* Packet is still on this queue because it wasn't
+			 * safe to remove it when the ack came in. We'll tidy
+			 * up below */
+			continue;
 		    }
 
 		    /* Turn off all flags except these ones, which are the same
@@ -5811,6 +5833,10 @@ rxi_Start(struct rxevent *event,
 			if (p->header.seq < call->tfirst
 			    && (p->flags & RX_PKTFLAG_ACKED)) {
 			    queue_Remove(p);
+
+			    if (opr_queue_IsOnQueue(&p->noAckEntry))
+				opr_queue_Remove(&p->noAckEntry);
+
 #ifdef RX_TRACK_PACKETS
 			    p->flags &= ~RX_PKTFLAG_TQ;
 #endif
@@ -5845,15 +5871,17 @@ rxi_Start(struct rxevent *event,
 
 		    /* The retry time is the retry time on the first unacknowledged
 		     * packet inside the current window */
-		    for (haveEvent =
-			 0, queue_Scan(&call->tq, p, nxp, rx_packet)) {
+		    haveEvent = 0;
+		    for (opr_queue_Scan(&call->tq_noack, cursor)) {
+			p = opr_queue_Entry(cursor, struct rx_packet,
+					    noAckEntry);
+
 			/* Don't set timers for packets outside the window */
 			if (p->header.seq >= call->tfirst + call->twind) {
 			    break;
 			}
 
-			if (!(p->flags & RX_PKTFLAG_ACKED)
-			    && !clock_IsZero(&p->retryTime)) {
+			if (!clock_IsZero(&p->retryTime)) {
 			    haveEvent = 1;
 			    retryTime = p->retryTime;
 			    break;

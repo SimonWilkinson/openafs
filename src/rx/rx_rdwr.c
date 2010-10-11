@@ -757,6 +757,7 @@ rxi_WriteProc(struct rx_call *call, char *buf,
 		cp->flags |= RX_PKTFLAG_TQ;
 #endif
 		queue_Append(&call->tq, cp);
+		opr_queue_Append(&call->tq_noack, &cp->noAckEntry);
 #ifdef RXDEBUG_PACKET
                 call->tqc++;
 #endif /* RXDEBUG_PACKET */
@@ -1115,9 +1116,7 @@ int
 rxi_WritevProc(struct rx_call *call, struct iovec *iov, int nio, int nbytes)
 {
     struct rx_packet *cp = NULL;
-#ifdef RX_TRACK_PACKETS
     struct rx_packet *p, *np;
-#endif
     int nextio;
     int requestCount;
     struct rx_queue tmpq;
@@ -1259,12 +1258,14 @@ rxi_WritevProc(struct rx_call *call, struct iovec *iov, int nio, int nbytes)
     /* Move the packets from the temporary queue onto the transmit queue.
      * We may end up with more than call->twind packets on the queue. */
 
-#ifdef RX_TRACK_PACKETS
     for (queue_Scan(&tmpq, p, np, rx_packet))
     {
+#ifdef RX_TRACK_PACKETS
         p->flags |= RX_PKTFLAG_TQ;
-    }
 #endif
+	opr_queue_Append(&call->tq_noack, &p->noAckEntry);
+    }
+
 
     if (call->error)
         call->mode = RX_MODE_ERROR;
@@ -1394,6 +1395,7 @@ rxi_FlushWrite(struct rx_call *call)
 	cp->flags |= RX_PKTFLAG_TQ;
 #endif
 	queue_Append(&call->tq, cp);
+	opr_queue_Append(&call->tq_noack, &cp->noAckEntry);
 #ifdef RXDEBUG_PACKET
         call->tqc++;
 #endif /* RXDEBUG_PACKET */

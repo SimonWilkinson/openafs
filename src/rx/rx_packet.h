@@ -251,6 +251,7 @@ struct rx_jumboHeader {
 
 struct rx_packet {
     struct rx_queue queueItemHeader;	/* Packets are chained using the queue.h package */
+    struct opr_queue noAckEntry;
     struct clock retryTime;	/* When this packet should NEXT be re-transmitted */
     struct clock timeSent;	/* When this packet was transmitted last */
     afs_uint32 firstSerial;	/* Original serial number of this packet */
