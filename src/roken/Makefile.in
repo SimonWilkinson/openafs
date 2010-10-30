@@ -58,7 +58,7 @@ librokenafs.a: $(OBJECTS)
 $(TOP_INCDIR)/err.h: ${UPSTREAM}/err.hin
 	cp $? $@
 
-$(TOP_INCDIR)/roken.h: $(UPSTREAM)/roken.h
+$(TOP_INCDIR)/roken.h: $(UPSTREAM)/roken.h.in
 	$(INSTALL_DATA) $? $@
 
 $(TOP_INCDIR)/roken-common.h: $(UPSTREAM)/roken-common.h
