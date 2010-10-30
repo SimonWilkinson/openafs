@@ -12,7 +12,9 @@
 #include "afs/param.h"
 #else
 #include <afs/param.h>
+#include <roken.h>
 #endif
+
 
 #ifdef AFS_SUN59_ENV
 #include <sys/time_impl.h>

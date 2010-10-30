@@ -15,6 +15,7 @@
 #include "afs/sysincludes.h"
 #include "rx/rx.h"
 #else /* KERNEL */
+# include <roken.h>
 # include "rx.h"
 #endif /* KERNEL */
 

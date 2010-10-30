@@ -21,9 +21,12 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
 #include <afsconfig.h>
 #include <afs/param.h>
+
+#ifndef HAVE_STRERROR
+#error Boom
+#endif
 
 #if defined(AFS_NT40_ENV)
 # define inline __inline
