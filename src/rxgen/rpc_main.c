@@ -368,6 +368,7 @@ c_output(char *infile, char *define, int extend, char *outfile, int append)
 	} else {
 	    f_print(fout, "#include <afsconfig.h>\n");
 	    f_print(fout, "#include <afs/param.h>\n");
+	    f_print(fout, "#include <roken.h>\n");
 	}
 	f_print(fout, "#ifdef AFS_NT40_ENV\n");
 	f_print(fout, "#define AFS_RXGEN_EXPORT __declspec(dllexport)\n");
@@ -656,6 +657,9 @@ C_output(char *infile, char *define, int extend, char *outfile, int append)
 	if (kflag) {
 	    f_print(fout, "#include \"%s\"\n\n", include);
 	} else {
+	    f_print(fout, "#include <afsconfig.h>\n");
+	    f_print(fout, "#include <afs/param.h>\n");
+	    f_print(fout, "#include <roken.h>\n");
 	    f_print(fout, "#include \"%s\"\n\n", include);
 	}
 	free(include);
@@ -721,6 +725,9 @@ S_output(char *infile, char *define, int extend, char *outfile, int append)
 	if (kflag) {
 	    f_print(fout, "#include \"%s\"\n", include);
 	} else {
+	    f_print(fout, "#include <afsconfig.h>\n");
+	    f_print(fout, "#include <afs/param.h>\n");
+	    f_print(fout, "#include <roken.h>\n");
 	    f_print(fout, "#include \"%s\"\n\n", include);
 	}
 	free(include);

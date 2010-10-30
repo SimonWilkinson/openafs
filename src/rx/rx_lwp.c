@@ -20,6 +20,7 @@
 
 #include <afsconfig.h>
 #include <afs/param.h>
+#include <roken.h>
 
 
 # include <sys/types.h>		/* fd_set on older platforms */

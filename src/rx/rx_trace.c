@@ -10,6 +10,7 @@
 #include <afsconfig.h>
 #include <afs/param.h>
 
+#include <roken.h>
 
 #ifndef RXDEBUG
 char rxi_tracename[80] = "\0Tracing not compiled in";
