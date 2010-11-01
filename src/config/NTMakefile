@@ -418,15 +418,9 @@ idirs: doclink
 !	IF (!EXIST($(DESTDIR)\include\afs))
 		$(MKDIR) $(DESTDIR)\include\afs
 !	ENDIF
-<<<<<<< HEAD
-!	IF (!EXIST($(DESTDIR)\include\des))
-		$(MKDIR) $(DESTDIR)\include\des
-!	ENDIF
 !	IF (!EXIST($(DESTDIR)\include\hcrypto))
 		$(MKDIR) $(DESTDIR)\include\hcrypto
 !	ENDIF
-=======
->>>>>>> f522d51... Remove local crypto
 !	IF (!EXIST($(DESTDIR)\include\rx))
 		$(MKDIR) $(DESTDIR)\include\rx
 !	ENDIF
