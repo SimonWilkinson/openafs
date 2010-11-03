@@ -194,13 +194,19 @@ rxi_ReadProc(struct rx_call *call, char *buf,
 			call->nLeft = cp->length;
 			hadd32(call->bytesRcvd, cp->length);
 
+			/* The listener is sending ack packets, which include
+			 * window size moves, as we process here. We only
+			 * actually need to send a hard ack packet when the
+			 * listener isn't doing so.
+			 */
+
 			/* Send a hard ack for every rxi_HardAckRate+1 packets
 			 * consumed. Otherwise schedule an event to send
 			 * the hard ack later on.
 			 */
 			call->nHardAcks++;
 			if (!(call->flags & RX_CALL_RECEIVE_DONE)) {
-			    if (call->nHardAcks > (u_short) rxi_HardAckRate) {
+			    if (call->nHardAcks > call->rwind/2) {
 				rxevent_Cancel(call->delayedAckEvent, call,
 					       RX_CALL_REFCOUNT_DELAY);
 				rxi_SendAck(call, 0, 0, RX_ACK_DELAY, 0);
@@ -567,7 +573,7 @@ rxi_FillReadVec(struct rx_call *call, afs_uint32 serial)
     /* If we consumed any packets then check whether we need to
      * send a hard ack. */
     if (didConsume && (!(call->flags & RX_CALL_RECEIVE_DONE))) {
-	if (call->nHardAcks > (u_short) rxi_HardAckRate) {
+	if (call->nHardAcks > call->rwind/2) {
 	    rxevent_Cancel(call->delayedAckEvent, call,
 			   RX_CALL_REFCOUNT_DELAY);
 	    rxi_SendAck(call, 0, serial, RX_ACK_DELAY, 0);
