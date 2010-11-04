@@ -63,6 +63,7 @@ XDROBJS =\
 	AFS_component_version_number.o
 
 RXOBJS =\
+	rx_acker.o \
 	rx_event.o \
 	rx_user.o \
 	rx_pthread.o \
@@ -152,6 +153,9 @@ libafsrpc.a: ${LIBOBJS}
 	    rs_aix*) \
 		$(AR) crv $@ ../sys/afsl.exp;; \
         esac
+
+rx_acker.o: ${RX}/rx_acker.c
+	$(AFS_CCRULE) $(RX)/rx_acker.c
 
 rx_event.o: ${RX}/rx_event.c
 	$(AFS_CCRULE) $(RX)/rx_event.c

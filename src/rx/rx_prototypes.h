@@ -275,6 +275,15 @@ void rxi_DebugInit(void);
 void rxi_DebugPrint(char *format, ...)
     AFS_ATTRIBUTE_FORMAT(__printf__, 1, 2);
 
+/* rx_acker.c */
+extern struct rx_packet *rxi_GetAckPacket(struct rx_packet *optionalPacket);
+extern void rxi_FreeAckPacket(struct rx_packet *packet,
+			      struct rx_packet *optionalPacket);
+extern void rxi_TransmitAck(struct rx_call *call, struct rx_packet *packet,
+			    int istack);
+extern void rxi_InitAckQueue(void);
+extern void *rxi_ProcessAckQueue(void *);
+
 /* rx_clock.c */
 #if !defined(clock_Init)
 extern void clock_Init(void);

@@ -178,6 +178,8 @@
 #define RX_PKTFLAG_CP           0x20
 #endif
 
+#define RX_PKTFLAG_XMIT_PENDING 0x40
+
 /* The rx part of the header of a packet, in host form */
 struct rx_header {
     afs_uint32 epoch;		/* Start time of client process */

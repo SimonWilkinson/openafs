@@ -5144,9 +5144,6 @@ rxi_SendAck(struct rx_call *call,
     u_char offset;
     afs_int32 templ;
     afs_uint32 padbytes = 0;
-#ifdef RX_ENABLE_TSFPQ
-    struct rx_ts_info_t * rx_ts_info;
-#endif
 
     /*
      * Open the receive window once a thread starts reading packets
@@ -5179,48 +5176,21 @@ rxi_SendAck(struct rx_call *call,
     call->nSoftAcks = 0;
     if (call->rnext > call->lastAcked)
 	call->lastAcked = call->rnext;
-    p = optionalPacket;
 
-    if (p) {
-	rx_computelen(p, p->length);	/* reset length, you never know */
-    } /* where that's been...         */
-#ifdef RX_ENABLE_TSFPQ
-    else {
-        RX_TS_INFO_GET(rx_ts_info);
-        if ((p = rx_ts_info->local_special_packet)) {
-            rx_computelen(p, p->length);
-        } else if ((p = rxi_AllocPacket(RX_PACKET_CLASS_SPECIAL))) {
-            rx_ts_info->local_special_packet = p;
-        } else { /* We won't send the ack, but don't panic. */
-            return optionalPacket;
-        }
-    }
-#else
-    else if (!(p = rxi_AllocPacket(RX_PACKET_CLASS_SPECIAL))) {
-	/* We won't send the ack, but don't panic. */
+    p = rxi_GetAckPacket(optionalPacket);
+
+    if (p == NULL)
 	return optionalPacket;
-    }
-#endif
 
     templ = padbytes +
 	rx_AckDataSize(call->rwind) + 4 * sizeof(afs_int32) -
 	rx_GetDataSize(p);
     if (templ > 0) {
-	if (rxi_AllocDataBuf(p, templ, RX_PACKET_CLASS_SPECIAL) > 0) {
-#ifndef RX_ENABLE_TSFPQ
-	    if (!optionalPacket)
-		rxi_FreePacket(p);
-#endif
-	    return optionalPacket;
-	}
+	if (rxi_AllocDataBuf(p, templ, RX_PACKET_CLASS_SPECIAL) > 0)
+	    goto out;
 	templ = rx_AckDataSize(call->rwind) + 2 * sizeof(afs_int32);
-	if (rx_Contiguous(p) < templ) {
-#ifndef RX_ENABLE_TSFPQ
-	    if (!optionalPacket)
-		rxi_FreePacket(p);
-#endif
-	    return optionalPacket;
-	}
+	if (rx_Contiguous(p) < templ)
+	    goto out;
     }
 
 
@@ -5246,12 +5216,8 @@ rxi_SendAck(struct rx_call *call,
     for (offset = 0, queue_Scan(&call->rq, rqp, nxp, rx_packet)) {
 	if (!rqp || !call->rq.next
 	    || (rqp->header.seq > (call->rnext + call->rwind))) {
-#ifndef RX_ENABLE_TSFPQ
-	    if (!optionalPacket)
-		rxi_FreePacket(p);
-#endif
 	    rxi_CallError(call, RX_CALL_DEAD);
-	    return optionalPacket;
+	    goto out;
 	}
 
 	while (rqp->header.seq > call->rnext + offset)
@@ -5259,12 +5225,8 @@ rxi_SendAck(struct rx_call *call,
 	ap->acks[offset++] = RX_ACK_TYPE_ACK;
 
 	if ((offset > (u_char) rx_maxReceiveWindow) || (offset > call->rwind)) {
-#ifndef RX_ENABLE_TSFPQ
-	    if (!optionalPacket)
-		rxi_FreePacket(p);
-#endif
 	    rxi_CallError(call, RX_CALL_DEAD);
-	    return optionalPacket;
+	    goto out;
 	}
     }
 
@@ -5354,31 +5316,15 @@ rxi_SendAck(struct rx_call *call,
     }
 #endif /* AFS_NT40_ENV */
 #endif
-    {
-	int i, nbytes = p->length;
 
-	for (i = 1; i < p->niovecs; i++) {	/* vec 0 is ALWAYS header */
-	    if (nbytes <= p->wirevec[i].iov_len) {
-		int savelen, saven;
+    rxi_TransmitAck(call, p, istack);
 
-		savelen = p->wirevec[i].iov_len;
-		saven = p->niovecs;
-		p->wirevec[i].iov_len = nbytes;
-		p->niovecs = i + 1;
-		rxi_Send(call, p, istack);
-		p->wirevec[i].iov_len = savelen;
-		p->niovecs = saven;
-		break;
-	    } else
-		nbytes -= p->wirevec[i].iov_len;
-	}
-    }
     if (rx_stats_active)
         rx_atomic_inc(&rx_stats.ackPacketsSent);
-#ifndef RX_ENABLE_TSFPQ
-    if (!optionalPacket)
-	rxi_FreePacket(p);
-#endif
+
+out:
+    rxi_FreeAckPacket(p, optionalPacket);
+
     return optionalPacket;	/* Return packet for re-use by caller */
 }
 

@@ -70,6 +70,8 @@ struct clock rxi_clockNow;
 
 static rx_atomic_t threadHiNum;
 
+static pthread_t acker_thread;
+
 int
 rx_NewThreadId(void) {
     return rx_atomic_inc_and_read(&threadHiNum);
@@ -354,13 +356,20 @@ rxi_StartListener(void)
 	osi_Panic("Unable to create Rx event handling thread\n");
     }
     rx_NewThreadId();
+
+    rxi_InitAckQueue();
+    if (pthread_create(&acker_thread, &tattr, 
+		       rxi_ProcessAckQueue, NULL) != 0) {
+	osi_Panic("Unable to create Rx ack sending thread \n");
+    }
+    rx_NewThreadId();
+
     AFS_SIGSET_RESTORE();
 
     MUTEX_ENTER(&listener_mutex);
     CV_BROADCAST(&rx_listener_cond);
     listeners_started = 1;
     MUTEX_EXIT(&listener_mutex);
-
 }
 
 /*

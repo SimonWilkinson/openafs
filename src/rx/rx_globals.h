@@ -148,7 +148,7 @@ EXT int rxi_SoftAckRate GLOBALSINIT(RX_FAST_ACK_RATE);
 /* consume n packets before sending hard ack, should be larger than above,
    but not absolutely necessary.  If it's smaller, than fast receivers will
    send a soft ack, immediately followed by a hard ack. */
-EXT int rxi_HardAckRate GLOBALSINIT(RX_FAST_ACK_RATE + 1);
+EXT int rxi_HardAckRate GLOBALSINIT(128);
 
 /* If window sizes become very variable (in terms of #packets), be
  * sure that the sender can get back a hard acks without having to wait for
