@@ -33,7 +33,9 @@
 #ifndef OPENAFS_OPR_QUEUE_H
 #define OPENAFS_OPR_QUEUE_H 1
 
-#include <stdlib.h>
+#ifndef KERNEL
+# include <stdlib.h>
+#endif
 
 struct opr_queue {
    struct opr_queue *next;

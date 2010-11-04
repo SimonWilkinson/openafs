@@ -2109,6 +2109,7 @@ rx_SetArrivalProc(struct rx_call *call,
  * appropriate, and return the final error code from the conversation
  * to the caller */
 
+/* Called only from the service thread */
 afs_int32
 rx_EndCall(struct rx_call *call, afs_int32 rc)
 {
@@ -2211,27 +2212,28 @@ rx_EndCall(struct rx_call *call, afs_int32 rc)
 	call->state = RX_STATE_DALLY;
     }
     error = call->error;
+    MUTEX_EXIT(&call->lock);
 
     /* currentPacket, nLeft, and NFree must be zeroed here, because
      * ResetCall cannot: ResetCall may be called at splnet(), in the
      * kernel version, and may interrupt the macros rx_Read or
      * rx_Write, which run at normal priority for efficiency. */
-    if (call->currentPacket) {
+    if (call->service.currentPacket) {
 #ifdef RX_TRACK_PACKETS
-        call->currentPacket->flags &= ~RX_PKTFLAG_CP;
+        call->service.currentPacket->flags &= ~RX_PKTFLAG_CP;
 #endif
-	rxi_FreePacket(call->currentPacket);
-	call->currentPacket = (struct rx_packet *)0;
+	rxi_FreePacket(call->service.currentPacket);
+	call->service.currentPacket = (struct rx_packet *)0;
     }
 
-    call->nLeft = call->nFree = call->curlen = 0;
+    call->service.nLeft = call->service.nFree = 0;
+    call->service.curlen = 0;
 
     /* Free any packets from the last call to ReadvProc/WritevProc */
 #ifdef RXDEBUG_PACKET
-    call->iovqc -=
+    call->service.iovqc -=
 #endif /* RXDEBUG_PACKET */
-        rxi_FreePackets(0, &call->iovq);
-    MUTEX_EXIT(&call->lock);
+        rxi_FreePackets(0, &call->service.iovq);
 
     MUTEX_ENTER(&rx_refcnt_mutex);
     CALL_RELE(call, RX_CALL_REFCOUNT_BEGIN);
@@ -2436,7 +2438,7 @@ rxi_NewCall(struct rx_connection *conn, int channel)
 	queue_Init(&call->tq);
 	queue_Init(&call->tq_noack);
 	queue_Init(&call->rq);
-	queue_Init(&call->iovq);
+	queue_Init(&call->service.iovq);
 	queue_Init(&call->receiveBuffer);
 #ifdef RXDEBUG_PACKET
         call->rqc = call->tqc = call->iovqc = 0;

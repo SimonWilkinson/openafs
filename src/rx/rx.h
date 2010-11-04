@@ -462,6 +462,28 @@ struct rx_peer {
 /* Maximum number of acknowledgements in an acknowledge packet */
 #define	RX_MAXACKS	    255
 
+
+/* Service portions of the call structure. These pieces of data are private
+ * to the service thread, and may be safely accessed whilst the call is
+ * unlocked.
+ *
+ * The previous comment indicated that it was important to ensure that this
+ * structure was padded to a double word boundary, to avoid problems with
+ * threads accessing the result of the call structure simultaneously
+ */
+struct rx_call_service {
+    struct rx_queue iovq;	/* readv/writev packet queue */
+    u_short nLeft;		/* Number bytes left in first receive packet */
+    u_short curvec;		/* current iovec in currentPacket */
+    u_short curlen;		/* bytes remaining in curvec */
+    u_short nFree;		/* Number bytes free in last send packet */
+    struct rx_packet *currentPacket; /* packet being assembled or read */
+    char *curpos;		/* current position in curvec */
+#ifdef RX_DEBUG_PACKET
+    int iovqc;		/* Packets in ivoq */
+#endif
+};
+
 /* Call structure:  only instantiated for active calls and dallying server calls.  The permanent call state (i.e. the call number as well as state shared with other calls associated with this connection) is maintained in the connection structure. */
 #ifdef KDUMP_RX_LOCK
 struct rx_call_rx_lock {
@@ -474,22 +496,7 @@ struct rx_call {
     struct opr_queue tq_noack;  /* Transmit packets which haven't been ack'd */
     struct rx_queue receiveBuffer; /* Received packets */
 
-    /*
-     * The following fields are accessed while the call is unlocked.
-     * These fields are used by the caller/server thread to marshall
-     * and unmarshall RPC data. 
-     *
-     * NOTE: Be sure that these fields start and end on a double
-     *       word boundary. Otherwise threads that are changing
-     *       adjacent fields will cause problems.
-     */
-    struct rx_queue iovq;	/* readv/writev packet queue */
-    u_short nLeft;		/* Number bytes left in first receive packet */
-    u_short curvec;		/* current iovec in currentPacket */
-    u_short curlen;		/* bytes remaining in curvec */
-    u_short nFree;		/* Number bytes free in last send packet */
-    struct rx_packet *currentPacket;	/* Current packet being assembled or being read */
-    char *curpos;		/* current position in curvec */
+    struct rx_call_service service;
     /*
      * End of fields accessed with call unlocked
      */
