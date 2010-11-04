@@ -3765,22 +3765,8 @@ rxi_ReceiveDataPacket(struct rx_call *call,
     }
 
     if (newPackets) {
-	/*
-	 * If the receiver is waiting for an iovec, fill the iovec
-	 * using the data from the receive queue */
-	if (call->flags & RX_CALL_IOVEC_WAIT) {
-	    rxi_FillReadVec(call, serial);
-	    /* the call may have been aborted */
-	    if (call->error) {
-		return NULL;
-	    }
-	}
-
 	/* Wakeup the reader if any */
-	if ((call->flags & RX_CALL_READER_WAIT)
-	    && (!(call->flags & RX_CALL_IOVEC_WAIT) || !(call->iovNBytes)
-		|| (call->iovNext >= call->iovMax)
-		|| (call->flags & RX_CALL_RECEIVE_DONE))) {
+	if (call->flags & RX_CALL_READER_WAIT) {
 	    call->flags &= ~RX_CALL_READER_WAIT;
 #ifdef	RX_ENABLE_LOCKS
 	    CV_BROADCAST(&call->cv_rq);

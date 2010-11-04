@@ -477,8 +477,7 @@ struct rx_call {
     /*
      * The following fields are accessed while the call is unlocked.
      * These fields are used by the caller/server thread to marshall
-     * and unmarshall RPC data. The only time they may be changed by
-     * other threads is when the RX_CALL_IOVEC_WAIT flag is set.
+     * and unmarshall RPC data. 
      *
      * NOTE: Be sure that these fields start and end on a double
      *       word boundary. Otherwise threads that are changing
@@ -638,7 +637,7 @@ struct rx_call {
 #define RX_CALL_FAST_RECOVER    2048	/* call is doing congestion recovery */
 #define RX_CALL_FAST_RECOVER_WAIT 4096	/* thread is waiting to start recovery */
 #define RX_CALL_SLOW_START_OK   8192	/* receiver acks every other packet */
-#define RX_CALL_IOVEC_WAIT	16384	/* waiting thread is using an iovec */
+/* 16834 was RX_IOVEC_WAIT, now available for reuse */
 #define RX_CALL_HAVE_LAST	32768	/* Last packet has been received */
 #define RX_CALL_NEED_START	0x10000	/* tells rxi_Start to start again */
 

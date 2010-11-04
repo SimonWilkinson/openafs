@@ -548,13 +548,6 @@ rxi_ReadvProc(struct rx_call *call, struct iovec *iov, int *nio, int maxio,
     if (call->error)
         goto error;
 
-    /* Get whatever data is currently available in the receive queue.
-     * If rxi_FillReadVec sends an ack packet then it is possible
-     * that we will receive more data while we drop the call lock
-     * to send the packet. Set the RX_CALL_IOVEC_WAIT flag
-     * here to avoid a race with the receive thread if we send
-     * hard acks in rxi_FillReadVec. */
-    call->flags |= RX_CALL_IOVEC_WAIT;
     call->iovNBytes = nbytes;
     call->iovMax = maxio;
     call->iovNext = 0;
@@ -563,8 +556,8 @@ rxi_ReadvProc(struct rx_call *call, struct iovec *iov, int *nio, int maxio,
 
     /* if we need more data then sleep until the receive thread has
      * filled in the rest. */
-    if (!call->error && call->iovNBytes && call->iovNext < call->iovMax
-	&& !(call->flags & RX_CALL_RECEIVE_DONE)) {
+    while (!call->error && call->iovNBytes && call->iovNext < call->iovMax
+	   && !(call->flags & RX_CALL_RECEIVE_DONE)) {
 	call->flags |= RX_CALL_READER_WAIT;
 	clock_NewTime();
 	call->startWait = clock_Sec();
@@ -576,8 +569,8 @@ rxi_ReadvProc(struct rx_call *call, struct iovec *iov, int *nio, int maxio,
 #endif
 	}
 	call->startWait = 0;
+	rxi_FillReadVec(call, 0);
     }
-    call->flags &= ~RX_CALL_IOVEC_WAIT;
 
     if (call->error)
         goto error;
