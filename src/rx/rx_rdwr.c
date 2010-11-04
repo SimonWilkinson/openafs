@@ -135,105 +135,61 @@ rxi_ReadProc(struct rx_call *call, char *buf,
 			continue;
 		    }
 		}
-		if (queue_IsNotEmpty(&call->rq)) {
-		    /* Check that next packet available is next in sequence */
-		    rp = queue_First(&call->rq, rx_packet);
-		    if (rp->header.seq == call->rnext) {
-			afs_int32 error;
-			struct rx_connection *conn = call->conn;
-			queue_Remove(rp);
+		if (queue_IsNotEmpty(&call->receiveBuffer)) {
+		    afs_int32 error;
+		    struct rx_connection *conn = call->conn;
+    		    rp = queue_First(&call->receiveBuffer, rx_packet);
+
+		    queue_Remove(rp);
 #ifdef RX_TRACK_PACKETS
-			rp->flags &= ~RX_PKTFLAG_RQ;
+		    rp->flags &= ~RX_PKTFLAG_RQ;
 #endif
 #ifdef RXDEBUG_PACKET
-                        call->rqc--;
+                    call->rqc--;
 #endif /* RXDEBUG_PACKET */
 
-			/* RXS_CheckPacket called to undo RXS_PreparePacket's
-			 * work.  It may reduce the length of the packet by up
-			 * to conn->maxTrailerSize, to reflect the length of the
-			 * data + the header. */
-			if ((error =
-			     RXS_CheckPacket(conn->securityObject, call,
-					     rp))) {
-			    /* Used to merely shut down the call, but now we
-			     * shut down the whole connection since this may
-			     * indicate an attempt to hijack it */
+		    /* RXS_CheckPacket called to undo RXS_PreparePacket's
+		     * work.  It may reduce the length of the packet by up
+		     * to conn->maxTrailerSize, to reflect the length of the
+		     * data + the header. */
+		    if ((error 
+			= RXS_CheckPacket(conn->securityObject, call, rp))) {
+			/* Used to merely shut down the call, but now we
+			 * shut down the whole connection since this may
+			 * indicate an attempt to hijack it */
 
-			    MUTEX_EXIT(&call->lock);
-			    rxi_ConnectionError(conn, error);
-			    MUTEX_ENTER(&conn->conn_data_lock);
-			    rp = rxi_SendConnectionAbort(conn, rp, 0, 0);
-			    MUTEX_EXIT(&conn->conn_data_lock);
-			    rxi_FreePacket(rp);
+			MUTEX_EXIT(&call->lock);
+			rxi_ConnectionError(conn, error);
+			MUTEX_ENTER(&conn->conn_data_lock);
+			rp = rxi_SendConnectionAbort(conn, rp, 0, 0);
+			MUTEX_EXIT(&conn->conn_data_lock);
+			rxi_FreePacket(rp);
 
-			    return 0;
-			}
-			call->rnext++;
-			cp = call->currentPacket = rp;
-#ifdef RX_TRACK_PACKETS
-			call->currentPacket->flags |= RX_PKTFLAG_CP;
-#endif
-			call->curvec = 1;	/* 0th vec is always header */
-			/* begin at the beginning [ more or less ], continue
-			 * on until the end, then stop. */
-			call->curpos =
-			    (char *)cp->wirevec[1].iov_base +
-			    call->conn->securityHeaderSize;
-			call->curlen =
-			    cp->wirevec[1].iov_len -
-			    call->conn->securityHeaderSize;
-
-			/* Notice that this code works correctly if the data
-			 * size is 0 (which it may be--no reply arguments from
-			 * server, for example).  This relies heavily on the
-			 * fact that the code below immediately frees the packet
-			 * (no yields, etc.).  If it didn't, this would be a
-			 * problem because a value of zero for call->nLeft
-			 * normally means that there is no read packet */
-			call->nLeft = cp->length;
-			hadd32(call->bytesRcvd, cp->length);
-
-			/* The listener is sending ack packets, which include
-			 * window size moves, as we process here. We only
-			 * actually need to send a hard ack packet when the
-			 * listener isn't doing so.
-			 */
-
-			/* Send a hard ack for every rxi_HardAckRate+1 packets
-			 * consumed. Otherwise schedule an event to send
-			 * the hard ack later on.
-			 */
-			call->nHardAcks++;
-			if (!(call->flags & RX_CALL_RECEIVE_DONE)) {
-			    if (call->nHardAcks > call->rwind/2) {
-				rxevent_Cancel(call->delayedAckEvent, call,
-					       RX_CALL_REFCOUNT_DELAY);
-				rxi_SendAck(call, 0, 0, RX_ACK_DELAY, 0);
-			    } else {
-				struct clock when, now;
-				clock_GetTime(&now);
-				when = now;
-				/* Delay to consolidate ack packets */
-				clock_Add(&when, &rx_hardAckDelay);
-				if (!call->delayedAckEvent
-				    || clock_Gt(&call->delayedAckEvent->
-						eventTime, &when)) {
-				    rxevent_Cancel(call->delayedAckEvent,
-						   call,
-						   RX_CALL_REFCOUNT_DELAY);
-                                    MUTEX_ENTER(&rx_refcnt_mutex);
-				    CALL_HOLD(call, RX_CALL_REFCOUNT_DELAY);
-                                    MUTEX_EXIT(&rx_refcnt_mutex);
-                                    call->delayedAckEvent =
-				      rxevent_PostNow(&when, &now,
-						     rxi_SendDelayedAck, call,
-						     0);
-				}
-			    }
-			}
-			break;
+			return 0;
 		    }
+		    cp = call->currentPacket = rp;
+#ifdef RX_TRACK_PACKETS
+		    call->currentPacket->flags |= RX_PKTFLAG_CP;
+#endif
+		    call->curvec = 1;	/* 0th vec is always header */
+		    /* begin at the beginning [ more or less ], continue
+		     * on until the end, then stop. */
+		    call->curpos = (char *)cp->wirevec[1].iov_base
+			           + call->conn->securityHeaderSize;
+		    call->curlen = cp->wirevec[1].iov_len
+			    	   - call->conn->securityHeaderSize;
+
+		    /* Notice that this code works correctly if the data
+		     * size is 0 (which it may be--no reply arguments from
+		     * server, for example).  This relies heavily on the
+		     * fact that the code below immediately frees the packet
+		     * (no yields, etc.).  If it didn't, this would be a
+		     * problem because a value of zero for call->nLeft
+		     * normally means that there is no read packet */
+		    call->nLeft = cp->length;
+		    hadd32(call->bytesRcvd, cp->length);
+
+	     	    break;
 		}
 
                 /*
@@ -424,11 +380,9 @@ rx_ReadProc32(struct rx_call *call, afs_int32 * value)
  * current iovec as possible. Does not block if it runs out
  * of packets to complete the iovec. Return true if an ack packet
  * was sent, otherwise return false */
-int
+void
 rxi_FillReadVec(struct rx_call *call, afs_uint32 serial)
 {
-    int didConsume = 0;
-    int didHardAck = 0;
     unsigned int t;
     struct rx_packet *rp;
     struct rx_packet *curp;
@@ -444,74 +398,64 @@ rxi_FillReadVec(struct rx_call *call, afs_uint32 serial)
     while (!call->error && call->iovNBytes && call->iovNext < call->iovMax) {
 	if (call->nLeft == 0) {
 	    /* Get next packet */
-	    if (queue_IsNotEmpty(&call->rq)) {
-		/* Check that next packet available is next in sequence */
-		rp = queue_First(&call->rq, rx_packet);
-		if (rp->header.seq == call->rnext) {
-		    afs_int32 error;
-		    struct rx_connection *conn = call->conn;
-		    queue_Remove(rp);
+	    if (queue_IsNotEmpty(&call->receiveBuffer)) {
+		afs_int32 error;
+		struct rx_connection *conn = call->conn;
+    		 
+		rp = queue_First(&call->receiveBuffer, rx_packet);
+		queue_Remove(rp);
 #ifdef RX_TRACK_PACKETS
-		    rp->flags &= ~RX_PKTFLAG_RQ;
+		rp->flags &= ~RX_PKTFLAG_RQ;
 #endif
 #ifdef RXDEBUG_PACKET
-                    call->rqc--;
+                call->rqc--;
 #endif /* RXDEBUG_PACKET */
 
-		    /* RXS_CheckPacket called to undo RXS_PreparePacket's
-		     * work.  It may reduce the length of the packet by up
-		     * to conn->maxTrailerSize, to reflect the length of the
-		     * data + the header. */
-		    if ((error =
-			 RXS_CheckPacket(conn->securityObject, call, rp))) {
-			/* Used to merely shut down the call, but now we
-			 * shut down the whole connection since this may
-			 * indicate an attempt to hijack it */
+		/* RXS_CheckPacket called to undo RXS_PreparePacket's
+		 * work.  It may reduce the length of the packet by up
+		 * to conn->maxTrailerSize, to reflect the length of the
+		 * data + the header. */
+		if ((error =
+		    RXS_CheckPacket(conn->securityObject, call, rp))) {
+		    /* Used to merely shut down the call, but now we
+		     * shut down the whole connection since this may
+		     * indicate an attempt to hijack it */
 
-			MUTEX_EXIT(&call->lock);
-			rxi_ConnectionError(conn, error);
-			MUTEX_ENTER(&conn->conn_data_lock);
-			rp = rxi_SendConnectionAbort(conn, rp, 0, 0);
-			MUTEX_EXIT(&conn->conn_data_lock);
-			rxi_FreePacket(rp);
-			MUTEX_ENTER(&call->lock);
+		    MUTEX_EXIT(&call->lock);
+		    rxi_ConnectionError(conn, error);
+		    MUTEX_ENTER(&conn->conn_data_lock);
+		    rp = rxi_SendConnectionAbort(conn, rp, 0, 0);
+		    MUTEX_EXIT(&conn->conn_data_lock);
+		    rxi_FreePacket(rp);
+		    MUTEX_ENTER(&call->lock);
 
-			return 1;
-		    }
-		    call->rnext++;
-		    curp = call->currentPacket = rp;
-#ifdef RX_TRACK_PACKETS
-		    call->currentPacket->flags |= RX_PKTFLAG_CP;
-#endif
-		    call->curvec = 1;	/* 0th vec is always header */
-		    cur_iov = &curp->wirevec[1];
-		    /* begin at the beginning [ more or less ], continue
-		     * on until the end, then stop. */
-		    call->curpos =
-			(char *)curp->wirevec[1].iov_base +
-			call->conn->securityHeaderSize;
-		    call->curlen =
-			curp->wirevec[1].iov_len -
-			call->conn->securityHeaderSize;
-
-		    /* Notice that this code works correctly if the data
-		     * size is 0 (which it may be--no reply arguments from
-		     * server, for example).  This relies heavily on the
-		     * fact that the code below immediately frees the packet
-		     * (no yields, etc.).  If it didn't, this would be a
-		     * problem because a value of zero for call->nLeft
-		     * normally means that there is no read packet */
-		    call->nLeft = curp->length;
-		    hadd32(call->bytesRcvd, curp->length);
-
-		    /* Send a hard ack for every rxi_HardAckRate+1 packets
-		     * consumed. Otherwise schedule an event to send
-		     * the hard ack later on.
-		     */
-		    call->nHardAcks++;
-		    didConsume = 1;
-		    continue;
+		    return;
 		}
+
+		curp = call->currentPacket = rp;
+#ifdef RX_TRACK_PACKETS
+		call->currentPacket->flags |= RX_PKTFLAG_CP;
+#endif
+		call->curvec = 1;	/* 0th vec is always header */
+		cur_iov = &curp->wirevec[1];
+		/* begin at the beginning [ more or less ], continue
+		 * on until the end, then stop. */
+		call->curpos = (char *)curp->wirevec[1].iov_base
+			       + call->conn->securityHeaderSize;
+		call->curlen = curp->wirevec[1].iov_len
+			       - call->conn->securityHeaderSize;
+
+		/* Notice that this code works correctly if the data
+		 * size is 0 (which it may be--no reply arguments from
+		 * server, for example).  This relies heavily on the
+		 * fact that the code below immediately frees the packet
+		 * (no yields, etc.).  If it didn't, this would be a
+		 * problem because a value of zero for call->nLeft
+		 * normally means that there is no read packet */
+		call->nLeft = curp->length;
+		hadd32(call->bytesRcvd, curp->length);
+
+		continue;
 	    }
 	    break;
 	}
@@ -570,33 +514,7 @@ rxi_FillReadVec(struct rx_call *call, afs_uint32 serial)
 	}
     }
 
-    /* If we consumed any packets then check whether we need to
-     * send a hard ack. */
-    if (didConsume && (!(call->flags & RX_CALL_RECEIVE_DONE))) {
-	if (call->nHardAcks > call->rwind/2) {
-	    rxevent_Cancel(call->delayedAckEvent, call,
-			   RX_CALL_REFCOUNT_DELAY);
-	    rxi_SendAck(call, 0, serial, RX_ACK_DELAY, 0);
-	    didHardAck = 1;
-	} else {
-	    struct clock when, now;
-	    clock_GetTime(&now);
-	    when = now;
-	    /* Delay to consolidate ack packets */
-	    clock_Add(&when, &rx_hardAckDelay);
-	    if (!call->delayedAckEvent
-		|| clock_Gt(&call->delayedAckEvent->eventTime, &when)) {
-		rxevent_Cancel(call->delayedAckEvent, call,
-			       RX_CALL_REFCOUNT_DELAY);
-                MUTEX_ENTER(&rx_refcnt_mutex);
-		CALL_HOLD(call, RX_CALL_REFCOUNT_DELAY);
-                MUTEX_EXIT(&rx_refcnt_mutex);
-		call->delayedAckEvent =
-		    rxevent_PostNow(&when, &now, rxi_SendDelayedAck, call, 0);
-	    }
-	}
-    }
-    return didHardAck;
+    return;
 }
 
 

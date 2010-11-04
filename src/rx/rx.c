@@ -2437,6 +2437,7 @@ rxi_NewCall(struct rx_connection *conn, int channel)
 	queue_Init(&call->tq_noack);
 	queue_Init(&call->rq);
 	queue_Init(&call->iovq);
+	queue_Init(&call->receiveBuffer);
 #ifdef RXDEBUG_PACKET
         call->rqc = call->tqc = call->iovqc = 0;
 #endif /* RXDEBUG_PACKET */
@@ -3506,7 +3507,6 @@ rxi_ReceiveDataPacket(struct rx_call *call,
 {
     int ackNeeded = 0;		/* 0 means no, otherwise ack_reason */
     int newPackets = 0;
-    int didHardAck = 0;
     int haveLast = 0;
     afs_uint32 seq;
     afs_uint32 serial=0, flags=0;
@@ -3590,27 +3590,15 @@ rxi_ReceiveDataPacket(struct rx_call *call,
 	/* The usual case is that this is the expected next packet */
 	if (seq == call->rnext) {
 
-	    /* Check to make sure it is not a duplicate of one already queued */
-	    if (queue_IsNotEmpty(&call->rq)
-		&& queue_First(&call->rq, rx_packet)->header.seq == seq) {
-                if (rx_stats_active)
-                    rx_atomic_inc(&rx_stats.dupPacketsRead);
-		dpf(("packet %"AFS_PTR_FMT" dropped on receipt - duplicate\n", np));
-		rxevent_Cancel(call->delayedAckEvent, call,
-			       RX_CALL_REFCOUNT_DELAY);
-		np = rxi_SendAck(call, np, serial, RX_ACK_DUPLICATE, istack);
-		ackNeeded = 0;
-		call->rprev = seq;
-		continue;
-	    }
-
 	    /* It's the next packet. Stick it on the receive queue
 	     * for this call. Set newPackets to make sure we wake
 	     * the reader once all packets have been processed */
+	    queue_Append(&call->receiveBuffer, np);
+	    call->rnext++;
+
 #ifdef RX_TRACK_PACKETS
 	    np->flags |= RX_PKTFLAG_RQ;
 #endif
-	    queue_Prepend(&call->rq, np);
 #ifdef RXDEBUG_PACKET
             call->rqc++;
 #endif /* RXDEBUG_PACKET */
@@ -3630,21 +3618,25 @@ rxi_ReceiveDataPacket(struct rx_call *call,
 		haveLast = 1;
 	    }
 
+	    /* Check to see if this fills in a gap in the receive window */
+	    if (!queue_IsEmpty(&call->rq)) {
+		struct rx_packet *tp, *nxp;
+	        for (queue_Scan(&call->rq, tp, nxp, rx_packet)) {
+		    if (call->rnext == tp->header.seq) {
+		        queue_Remove(tp);
+		        queue_Append(&call->receiveBuffer, tp);
+		        call->rnext++;
+		    } else
+		        break;
+	        }
+	    }
+
 	    /* Check whether we have all of the packets for this call */
 	    if (call->flags & RX_CALL_HAVE_LAST) {
-		afs_uint32 tseq;	/* temporary sequence number */
-		struct rx_packet *tp;	/* Temporary packet pointer */
-		struct rx_packet *nxp;	/* Next pointer, for queue_Scan */
-
-		for (tseq = seq, queue_Scan(&call->rq, tp, nxp, rx_packet)) {
-		    if (tseq != tp->header.seq)
-			break;
-		    if (tp->header.flags & RX_LAST_PACKET) {
-			call->flags |= RX_CALL_RECEIVE_DONE;
-			break;
-		    }
-		    tseq++;
-		}
+		struct rx_packet *p;
+		p = queue_Last(&call->receiveBuffer, rx_packet);
+		if (p->flags & RX_LAST_PACKET) 
+		    call->flags |= RX_CALL_RECEIVE_DONE;
 	    }
 
 	    /* Provide asynchronous notification for those who want it
@@ -3754,23 +3746,6 @@ rxi_ReceiveDataPacket(struct rx_call *call,
 	    call->nSoftAcks++;
 	    np = NULL;
 
-	    /* Check whether we have all of the packets for this call */
-	    if ((call->flags & RX_CALL_HAVE_LAST)
-		&& !(call->flags & RX_CALL_RECEIVE_DONE)) {
-		afs_uint32 tseq;	/* temporary sequence number */
-
-		for (tseq =
-		     call->rnext, queue_Scan(&call->rq, tp, nxp, rx_packet)) {
-		    if (tseq != tp->header.seq)
-			break;
-		    if (tp->header.flags & RX_LAST_PACKET) {
-			call->flags |= RX_CALL_RECEIVE_DONE;
-			break;
-		    }
-		    tseq++;
-		}
-	    }
-
 	    /* We need to send an ack of the packet is out of sequence,
 	     * or if an ack was requested by the peer. */
 	    if (seq != prev + 1 || missing) {
@@ -3794,13 +3769,10 @@ rxi_ReceiveDataPacket(struct rx_call *call,
 	 * If the receiver is waiting for an iovec, fill the iovec
 	 * using the data from the receive queue */
 	if (call->flags & RX_CALL_IOVEC_WAIT) {
-	    didHardAck = rxi_FillReadVec(call, serial);
+	    rxi_FillReadVec(call, serial);
 	    /* the call may have been aborted */
 	    if (call->error) {
 		return NULL;
-	    }
-	    if (didHardAck) {
-		ackNeeded = 0;
 	    }
 	}
 
@@ -4360,6 +4332,7 @@ rxi_ReceiveAckPacket(struct rx_call *call, struct rx_packet *np,
     }
 
     if (call->flags & RX_CALL_FAST_RECOVER) {
+	printf("I hate you\n");
 	if (nNacked) {
 	    call->cwind = MIN((int)(call->cwind + 1), rx_maxSendWindow);
 	} else {
@@ -4382,6 +4355,7 @@ rxi_ReceiveAckPacket(struct rx_call *call, struct rx_packet *np,
 	MUTEX_ENTER(&peer->peer_lock);
 #endif /* AFS_GLOBAL_RXLOCK_KERNEL */
 	call->flags &= ~RX_CALL_FAST_RECOVER_WAIT;
+	printf("Entering fast recovery. Oh Dear\n");
 	call->flags |= RX_CALL_FAST_RECOVER;
 	call->ssthresh = MAX(4, MIN((int)call->cwind, (int)call->twind)) >> 1;
 	call->cwind =
@@ -5075,7 +5049,6 @@ rxi_ResetCall(struct rx_call *call, int newcall)
     call->nNacks = 0;
     call->nCwindAcks = 0;
     call->nSoftAcks = 0;
-    call->nHardAcks = 0;
 
     call->tfirst = call->rnext = call->tnext = 1;
     call->tprev = 0;
@@ -5203,7 +5176,6 @@ rxi_SendAck(struct rx_call *call,
 	reason = RX_ACK_PING;
     }
 
-    call->nHardAcks = 0;
     call->nSoftAcks = 0;
     if (call->rnext > call->lastAcked)
 	call->lastAcked = call->rnext;

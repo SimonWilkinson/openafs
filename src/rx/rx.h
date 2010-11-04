@@ -470,8 +470,9 @@ struct rx_call {
 #endif
     struct rx_queue queue_item_header;	/* Call can be on various queues (one-at-a-time) */
     struct rx_queue tq;		/* Transmit packet queue */
-    struct rx_queue rq;		/* Receive packet queue */
+    struct rx_queue rq;		/* Packets in receive window */
     struct opr_queue tq_noack;  /* Transmit packets which haven't been ack'd */
+    struct rx_queue receiveBuffer; /* Received packets */
 
     /*
      * The following fields are accessed while the call is unlocked.
@@ -532,7 +533,6 @@ struct rx_call {
     u_short nNacks;		/* Number packets acked that follow the
 				 * first negatively acked packet */
     u_short nSoftAcks;		/* The number of delayed soft acks */
-    u_short nHardAcks;		/* The number of delayed hard acks */
     u_short congestSeq;		/* Peer's congestion sequence counter */
     struct rxevent *resendEvent;	/* If this is non-Null, there is a retransmission event pending */
     struct rxevent *timeoutEvent;	/* If this is non-Null, then there is an overall timeout for this call */
